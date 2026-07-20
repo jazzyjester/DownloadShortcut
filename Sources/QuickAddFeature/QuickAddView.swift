@@ -1,3 +1,4 @@
+import AppKit
 import ComposableArchitecture
 import SwiftUI
 
@@ -57,6 +58,13 @@ public struct QuickAddView: View {
     .colorScheme(.dark)
     .onAppear {
       store.send(.onAppear)
+      isTextFieldFocused = true
+    }
+    // `.onAppear` can fire before the hosting panel has actually finished becoming
+    // key (it's shown via manually-driven AppKit code, not SwiftUI's own window
+    // lifecycle), so `@FocusState` set there doesn't reliably "stick". Re-apply it
+    // whenever a window genuinely becomes key while this popup is showing.
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       isTextFieldFocused = true
     }
     .onExitCommand { store.send(.cancelButtonTapped) }

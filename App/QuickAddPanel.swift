@@ -61,10 +61,17 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     self.panel = panel
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
+    // Explicitly hand first-responder status to the hosting view: becoming key
+    // window alone doesn't guarantee SwiftUI's `@FocusState` inside it gets applied,
+    // since our AppKit-driven presentation isn't on SwiftUI's own window lifecycle.
+    panel.makeFirstResponder(hostingView)
     // Belt-and-suspenders for the global-hotkey path: activation can lag a beat
-    // behind the calls above, so re-assert key status on the next run loop turn.
-    DispatchQueue.main.async { [weak panel] in
+    // behind the calls above, so re-assert both on the next run loop turn.
+    DispatchQueue.main.async { [weak panel, weak hostingView] in
       panel?.makeKeyAndOrderFront(nil)
+      if let hostingView {
+        panel?.makeFirstResponder(hostingView)
+      }
     }
   }
 
