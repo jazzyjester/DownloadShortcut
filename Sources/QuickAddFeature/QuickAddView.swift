@@ -57,6 +57,7 @@ public struct QuickAddView: View {
     // to render with light-on-dark text/controls for consistent contrast.
     .colorScheme(.dark)
     .onAppear {
+      print("[QuickAddView] onAppear, setting isTextFieldFocused = true")
       store.send(.onAppear)
       isTextFieldFocused = true
     }
@@ -65,7 +66,11 @@ public struct QuickAddView: View {
     // lifecycle), so `@FocusState` set there doesn't reliably "stick". Re-apply it
     // whenever a window genuinely becomes key while this popup is showing.
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+      print("[QuickAddView] didBecomeKeyNotification, setting isTextFieldFocused = true")
       isTextFieldFocused = true
+    }
+    .onChange(of: isTextFieldFocused) { _, newValue in
+      print("[QuickAddView] isTextFieldFocused changed to \(newValue)")
     }
     .onExitCommand { store.send(.cancelButtonTapped) }
   }

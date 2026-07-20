@@ -77,22 +77,34 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     centerOnScreen(window)
 
     self.window = window
-    activateAndFocus(window, hostingView: hostingView)
+    print("[QuickAddPanel] before activateAndFocus: NSApp.isActive=\(NSApp.isActive) policy=\(NSApp.activationPolicy())")
+    activateAndFocus(window, hostingView: hostingView, tag: "immediate")
     // Belt-and-suspenders for the global-hotkey path: activation triggered from deep
     // inside an async effect chain can lag a beat behind the calls above, so
     // re-assert on the next run loop turn too.
     DispatchQueue.main.async { [weak self, weak window, weak hostingView] in
       guard let window, let hostingView else { return }
-      self?.activateAndFocus(window, hostingView: hostingView)
+      self?.activateAndFocus(window, hostingView: hostingView, tag: "deferred")
     }
   }
 
-  private func activateAndFocus(_ window: NSWindow, hostingView: NSView) {
+  private func activateAndFocus(_ window: NSWindow, hostingView: NSView, tag: String) {
     NSApp.activate(ignoringOtherApps: true)
     window.orderFrontRegardless()
     window.makeKey()
     window.makeFirstResponder(hostingView)
     simulateClickToFocus(window)
+    print(
+      """
+      [QuickAddPanel] after activateAndFocus(\(tag)): \
+      NSApp.isActive=\(NSApp.isActive) \
+      policy=\(NSApp.activationPolicy()) \
+      window.isKeyWindow=\(window.isKeyWindow) \
+      window.isMainWindow=\(window.isMainWindow) \
+      NSApp.keyWindow===thisWindow=\(NSApp.keyWindow === window) \
+      window.firstResponder=\(String(describing: window.firstResponder))
+      """
+    )
   }
 
   /// Feeds a synthetic click directly into our own window — not a system-level
