@@ -4,13 +4,20 @@ import ComposableArchitecture
 import QuickAddFeature
 import SwiftUI
 
-/// The borderless popup that appears centered on screen when the global shortcut
-/// fires. Presence is entirely driven by `AppFeature.State.quickAdd`: this class just
-/// shows/hides an `NSPanel` to match, and turns "clicked away" into a cancel.
+/// The popup that appears centered on screen when the global shortcut fires.
+/// Presence is entirely driven by `AppFeature.State.quickAdd`: this class just
+/// shows/hides an `NSWindow` to match, and turns "clicked away" into a cancel.
+///
+/// This is a *titled* window with its title bar hidden, rather than a `.borderless`
+/// `NSPanel`. Borderless panels default `canBecomeKey` to `false` and, even after
+/// overriding that, proved unreliable about actually taking key/focus status when
+/// shown from a global hotkey (several async hops removed from the original
+/// keypress) rather than a normal in-app click. Titled windows behave normally here
+/// with no special-casing needed.
 @MainActor
 final class QuickAddPanel: NSObject, NSWindowDelegate {
   private let store: StoreOf<AppFeature>
-  private var panel: NSPanel?
+  private var window: NSWindow?
 
   init(store: StoreOf<AppFeature>) {
     self.store = store
@@ -31,68 +38,71 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
   }
 
   private func showIfNeeded() {
-    guard panel == nil else { return }
+    guard window == nil else { return }
     guard let childStore = store.scope(state: \.quickAdd, action: \.quickAdd.presented) else { return }
 
     let hostingView = NSHostingView(rootView: QuickAddView(store: childStore))
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
-    // Deliberately *not* `.nonactivatingPanel`: that flag tells AppKit "don't
-    // activate the app when this becomes key", which directly fought the
-    // `NSApp.activate` call below and left the popup shown-but-unfocused right
-    // after the global hotkey fired — typing and Escape needed an extra click to
-    // start working. We want this fully focused the instant it appears.
-    let panel = KeyablePanel(
+    let window = NSWindow(
       contentRect: hostingView.frame,
-      styleMask: [.borderless],
+      styleMask: [.titled, .fullSizeContentView],
       backing: .buffered,
       defer: false
     )
-    panel.level = .floating
-    panel.isOpaque = false
-    panel.backgroundColor = .clear
-    panel.hasShadow = true
-    panel.contentView = hostingView
-    panel.delegate = self
+    window.titlebarAppearsTransparent = true
+    window.titleVisibility = .hidden
+    window.standardWindowButton(.closeButton)?.isHidden = true
+    window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+    window.standardWindowButton(.zoomButton)?.isHidden = true
+    window.isMovableByWindowBackground = true
+    window.level = .floating
+    window.isOpaque = false
+    window.backgroundColor = .clear
+    window.hasShadow = true
+    window.contentView = hostingView
+    window.delegate = self
 
-    centerOnScreen(panel)
+    centerOnScreen(window)
 
-    self.panel = panel
-    NSApp.activate(ignoringOtherApps: true)
-    panel.makeKeyAndOrderFront(nil)
-    // Explicitly hand first-responder status to the hosting view: becoming key
-    // window alone doesn't guarantee SwiftUI's `@FocusState` inside it gets applied,
-    // since our AppKit-driven presentation isn't on SwiftUI's own window lifecycle.
-    panel.makeFirstResponder(hostingView)
-    // Belt-and-suspenders for the global-hotkey path: activation can lag a beat
-    // behind the calls above, so re-assert both on the next run loop turn.
-    DispatchQueue.main.async { [weak panel, weak hostingView] in
-      panel?.makeKeyAndOrderFront(nil)
-      if let hostingView {
-        panel?.makeFirstResponder(hostingView)
-      }
+    self.window = window
+    activateAndFocus(window, hostingView: hostingView)
+    // Belt-and-suspenders for the global-hotkey path: activation triggered from deep
+    // inside an async effect chain can lag a beat behind the calls above, so
+    // re-assert on the next run loop turn too.
+    DispatchQueue.main.async { [weak self, weak window, weak hostingView] in
+      guard let window, let hostingView else { return }
+      self?.activateAndFocus(window, hostingView: hostingView)
     }
   }
 
-  /// Centers the panel on whichever screen the mouse is currently over (falling back
-  /// to the main screen), so it shows up on the display the user is actually using.
-  private func centerOnScreen(_ panel: NSPanel) {
+  private func activateAndFocus(_ window: NSWindow, hostingView: NSView) {
+    NSApp.activate(ignoringOtherApps: true)
+    window.orderFrontRegardless()
+    window.makeKey()
+    window.makeFirstResponder(hostingView)
+  }
+
+  /// Centers the window on whichever screen the mouse is currently over (falling
+  /// back to the main screen), so it shows up on the display the user is actually
+  /// using.
+  private func centerOnScreen(_ window: NSWindow) {
     let mouseLocation = NSEvent.mouseLocation
     guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
     else { return }
 
     let visibleFrame = screen.visibleFrame
     let origin = NSPoint(
-      x: visibleFrame.midX - panel.frame.width / 2,
-      y: visibleFrame.midY - panel.frame.height / 2
+      x: visibleFrame.midX - window.frame.width / 2,
+      y: visibleFrame.midY - window.frame.height / 2
     )
-    panel.setFrameOrigin(origin)
+    window.setFrameOrigin(origin)
   }
 
   private func dismiss() {
-    panel?.orderOut(nil)
-    panel = nil
+    window?.orderOut(nil)
+    window = nil
   }
 
   func windowDidResignKey(_ notification: Notification) {
@@ -100,11 +110,4 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     // starting a download.
     store.send(.quickAdd(.presented(.cancelButtonTapped)))
   }
-}
-
-/// `NSWindow.canBecomeKey` defaults to `false` for borderless windows — the panel
-/// would show, but never actually become key, so its text field could never get
-/// keyboard focus (this is why typing into the popup silently did nothing).
-private final class KeyablePanel: NSPanel {
-  override var canBecomeKey: Bool { true }
 }
