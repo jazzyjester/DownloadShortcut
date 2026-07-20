@@ -38,9 +38,14 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
+    // Deliberately *not* `.nonactivatingPanel`: that flag tells AppKit "don't
+    // activate the app when this becomes key", which directly fought the
+    // `NSApp.activate` call below and left the popup shown-but-unfocused right
+    // after the global hotkey fired — typing and Escape needed an extra click to
+    // start working. We want this fully focused the instant it appears.
     let panel = KeyablePanel(
       contentRect: hostingView.frame,
-      styleMask: [.borderless, .nonactivatingPanel],
+      styleMask: [.borderless],
       backing: .buffered,
       defer: false
     )
@@ -56,6 +61,11 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     self.panel = panel
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
+    // Belt-and-suspenders for the global-hotkey path: activation can lag a beat
+    // behind the calls above, so re-assert key status on the next run loop turn.
+    DispatchQueue.main.async { [weak panel] in
+      panel?.makeKeyAndOrderFront(nil)
+    }
   }
 
   /// Centers the panel on whichever screen the mouse is currently over (falling back
