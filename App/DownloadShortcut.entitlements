@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Intentionally not sandboxed (no com.apple.security.app-sandbox key): this is a
+	direct-distribution (Developer ID) app, not a Mac App Store submission. That keeps
+	the global hotkey and writing to ~/Downloads simple, with no security-scoped
+	bookmarks required. Hardened Runtime (enabled in project.yml) is still required for
+	notarization; this app doesn't need any of its opt-out exception entitlements.
+	-->
+</dict>
+</plist>
