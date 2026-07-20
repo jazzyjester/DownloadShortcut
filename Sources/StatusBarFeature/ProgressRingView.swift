@@ -15,18 +15,13 @@ public struct StatusBarIconView: View {
       Image(systemName: "arrow.down.circle")
         .font(.system(size: 16, weight: .medium))
 
-    case let .downloading(activeCount, overallFraction):
-      HStack(spacing: 3) {
+    case let .downloading(_, overallFraction):
+      ZStack {
         ProgressRing(fractionCompleted: overallFraction)
-          .frame(width: 15, height: 15)
-        Text("\(Int((overallFraction * 100).rounded()))%")
-          .font(.system(size: 11, weight: .semibold).monospacedDigit())
-        if activeCount > 1 {
-          Text("(\(activeCount))")
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-        }
+        Text("\(Int((overallFraction * 100).rounded()))")
+          .font(.system(size: 8, weight: .bold).monospacedDigit())
       }
+      .frame(width: 22, height: 22)
 
     case .justFinished:
       Image(systemName: "checkmark.circle.fill")

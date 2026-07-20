@@ -14,6 +14,12 @@ public struct QuickAddFeature: Sendable {
     public init(urlText: String = "") {
       self.urlText = urlText
     }
+
+    /// Live validity, recomputed from `urlText` as it changes — lets the view show
+    /// "this is a valid URL" (or not) without waiting for a submit attempt.
+    public var isValid: Bool {
+      !QuickAddFeature.parseURLs(from: urlText).isEmpty
+    }
   }
 
   public enum Action: BindableAction, Sendable {
@@ -47,11 +53,12 @@ public struct QuickAddFeature: Sendable {
         return .send(.delegate(.cancelled))
 
       case let .clipboardRead(text):
-        // Always seed from the clipboard, even if it isn't a full "https://..." URL
-        // yet (e.g. "example.com/file.zip" copied without a scheme) — validation
-        // happens on submit, so the user can see and fix it up here instead of the
-        // box silently staying blank.
-        state.urlText = text ?? ""
+        // Seed from the clipboard, preferring a URL found (and normalized) anywhere
+        // inside it — e.g. copying a JSON blob with a `"src": "//host/path.mp4"`
+        // field should still find and fix up that URL — falling back to the raw
+        // text verbatim so the user can see and fix it up themselves.
+        guard let text, !text.isEmpty else { return .none }
+        state.urlText = Self.extractURL(from: text)?.absoluteString ?? text
         return .none
 
       case .delegate:
@@ -84,5 +91,37 @@ public struct QuickAddFeature: Sendable {
         guard let url = URL(string: line), url.scheme != nil, url.host != nil else { return nil }
         return url
       }
+  }
+
+  /// Finds the first URL anywhere inside arbitrary text — not just text that's
+  /// *entirely* a URL — and normalizes it into something downloadable. Handles a
+  /// normal `http(s)://…` URL embedded anywhere (e.g. in a sentence or a JSON blob),
+  /// a protocol-relative `//host/path` URL, and a bare `host/path` with no scheme at
+  /// all (both common in JSON API responses/network-inspector copies). `NSDataDetector`
+  /// recognizes all three, but defaults to `http://` for the latter two; this prefers
+  /// `https://` whenever the original text didn't already spell out a scheme.
+  static func extractURL(from text: String) -> URL? {
+    guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+    else { return nil }
+
+    let range = NSRange(text.startIndex..., in: text)
+    for match in detector.matches(in: text, range: range) {
+      guard let url = match.url, url.host != nil, let matchRange = Range(match.range, in: text)
+      else { continue }
+
+      let matchedText = text[matchRange]
+      if matchedText.hasPrefix("http://") || matchedText.hasPrefix("https://") {
+        return url
+      }
+      // No explicit scheme in the source text (e.g. "//host/path" or "host/path") —
+      // the detector inferred one; prefer https over its http default.
+      let hostAndPath = matchedText.drop(while: { $0 == "/" })
+      if let httpsURL = URL(string: "https://" + hostAndPath), httpsURL.host != nil {
+        return httpsURL
+      }
+      return url
+    }
+
+    return nil
   }
 }

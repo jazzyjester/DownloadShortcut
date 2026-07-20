@@ -19,9 +19,9 @@ struct QuickAddFeatureTests {
     }
   }
 
-  @Test func onAppearSeedsFromClipboardEvenWithoutAScheme() async {
-    // e.g. "example.com/file.zip" copied without "https://" — still shown so the
-    // user can see/fix it up, rather than the box silently staying blank.
+  @Test func onAppearFixesUpAClipboardURLWithNoScheme() async {
+    // e.g. "example.com/file.zip" copied without "https://" — recognized and fixed
+    // up to a real URL, rather than the box staying blank or unusable as-is.
     let store = TestStore(initialState: QuickAddFeature.State()) {
       QuickAddFeature()
     } withDependencies: {
@@ -30,7 +30,40 @@ struct QuickAddFeatureTests {
 
     await store.send(.onAppear)
     await store.receive(\.clipboardRead) {
-      $0.urlText = "example.com/file.zip"
+      $0.urlText = "https://example.com/file.zip"
+    }
+    #expect(store.state.isValid)
+  }
+
+  @Test func onAppearExtractsAndFixesAProtocolRelativeURLBuriedInJSON() async {
+    // Matches a real "copy from a network inspector" scenario: a JSON fragment with
+    // a protocol-relative URL (no scheme) inside a quoted field.
+    let json = """
+      "src": "//cdn.example.com/media/archive/low/some-video-id/archive_low.mp4",
+      """
+    let store = TestStore(initialState: QuickAddFeature.State()) {
+      QuickAddFeature()
+    } withDependencies: {
+      $0.clipboardClient.readString = { json }
+    }
+
+    await store.send(.onAppear)
+    await store.receive(\.clipboardRead) {
+      $0.urlText = "https://cdn.example.com/media/archive/low/some-video-id/archive_low.mp4"
+    }
+    #expect(store.state.isValid)
+  }
+
+  @Test func onAppearExtractsAURLEmbeddedInASentence() async {
+    let store = TestStore(initialState: QuickAddFeature.State()) {
+      QuickAddFeature()
+    } withDependencies: {
+      $0.clipboardClient.readString = { "check this out: https://example.com/file.zip it's great" }
+    }
+
+    await store.send(.onAppear)
+    await store.receive(\.clipboardRead) {
+      $0.urlText = "https://example.com/file.zip"
     }
   }
 
