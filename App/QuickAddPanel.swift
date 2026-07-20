@@ -9,19 +9,14 @@ import SwiftUI
 /// shows/hides an `NSWindow` to match, and turns "clicked away" into a cancel.
 ///
 /// This is a *titled* window with its title bar hidden, rather than a `.borderless`
-/// `NSPanel`. Borderless panels default `canBecomeKey` to `false` and, even after
-/// overriding that, proved unreliable about actually taking key/focus status when
-/// shown from a global hotkey rather than a normal in-app click. Titled windows
-/// behave normally here with no special-casing needed.
-///
-/// The other half of that fix: `.accessory` (`LSUIElement`) apps can have
-/// `NSApp.activate(ignoringOtherApps:)` silently ignored by macOS when it's called
-/// from a background-triggered context like a global hotkey — regardless of how
-/// correctly/promptly it's called — where a `.regular` app's activation request
-/// would be honored normally. This is a documented pattern used by similar
-/// hotkey-summoned utilities (Alfred, Raycast, LaunchBar, …): switch to `.regular`
-/// for the moment the window is shown (briefly showing a Dock icon), and back to
-/// `.accessory` once it's dismissed.
+/// `NSPanel`, and switches `NSApp`'s activation policy to `.regular` for the moment
+/// it's shown (see `showIfNeeded`/`dismiss`) — both changes needed to reliably get
+/// the window into a real key/active state when summoned from a global hotkey.
+/// Diagnostic logging confirmed that part now works correctly (window key, app
+/// active, right window). The remaining piece — SwiftUI's `@FocusState` actually
+/// landing on the text field — is handled in `QuickAddView` itself; this class
+/// deliberately does *not* also call `makeFirstResponder`/synthesize a click, since
+/// those turned out to interfere with SwiftUI's own focus handling rather than help it.
 @MainActor
 final class QuickAddPanel: NSObject, NSWindowDelegate {
   private let store: StoreOf<AppFeature>
@@ -77,78 +72,8 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     centerOnScreen(window)
 
     self.window = window
-    print("[QuickAddPanel] before activateAndFocus: NSApp.isActive=\(NSApp.isActive) policy=\(NSApp.activationPolicy())")
-    activateAndFocus(window, hostingView: hostingView, tag: "immediate")
-    // Belt-and-suspenders for the global-hotkey path: activation triggered from deep
-    // inside an async effect chain can lag a beat behind the calls above, so
-    // re-assert on the next run loop turn too.
-    DispatchQueue.main.async { [weak self, weak window, weak hostingView] in
-      guard let window, let hostingView else { return }
-      self?.activateAndFocus(window, hostingView: hostingView, tag: "deferred")
-    }
-  }
-
-  private func activateAndFocus(_ window: NSWindow, hostingView: NSView, tag: String) {
     NSApp.activate(ignoringOtherApps: true)
-    window.orderFrontRegardless()
-    window.makeKey()
-    window.makeFirstResponder(hostingView)
-    simulateClickToFocus(window)
-    print(
-      """
-      [QuickAddPanel] after activateAndFocus(\(tag)): \
-      NSApp.isActive=\(NSApp.isActive) \
-      policy=\(NSApp.activationPolicy()) \
-      window.isKeyWindow=\(window.isKeyWindow) \
-      window.isMainWindow=\(window.isMainWindow) \
-      NSApp.keyWindow===thisWindow=\(NSApp.keyWindow === window) \
-      window.firstResponder=\(String(describing: window.firstResponder))
-      """
-    )
-  }
-
-  /// Feeds a synthetic click directly into our own window — not a system-level
-  /// `CGEvent` (which would need Accessibility permission, since posting into the
-  /// global HID event stream is gated regardless of which window it targets), just
-  /// an `NSEvent` constructed and handed to `window.sendEvent(_:)` in-process. This
-  /// goes through the exact same hit-testing/first-responder code path a real click
-  /// does, as a last-resort fallback in case that path succeeds where directly
-  /// calling `makeKey`/`makeFirstResponder` above hasn't reliably.
-  private func simulateClickToFocus(_ window: NSWindow) {
-    // Aimed at the text field's likely position: horizontally centered, and near
-    // the top (just below the view's top padding) since the field is the first,
-    // top-aligned element in the popup regardless of how many lines its content
-    // ends up wrapping to.
-    let clickPoint = NSPoint(x: window.frame.width / 2, y: max(window.frame.height - 50, 20))
-    let timestamp = ProcessInfo.processInfo.systemUptime
-
-    guard
-      let mouseDown = NSEvent.mouseEvent(
-        with: .leftMouseDown,
-        location: clickPoint,
-        modifierFlags: [],
-        timestamp: timestamp,
-        windowNumber: window.windowNumber,
-        context: nil,
-        eventNumber: 0,
-        clickCount: 1,
-        pressure: 1
-      ),
-      let mouseUp = NSEvent.mouseEvent(
-        with: .leftMouseUp,
-        location: clickPoint,
-        modifierFlags: [],
-        timestamp: timestamp,
-        windowNumber: window.windowNumber,
-        context: nil,
-        eventNumber: 0,
-        clickCount: 1,
-        pressure: 1
-      )
-    else { return }
-
-    window.sendEvent(mouseDown)
-    window.sendEvent(mouseUp)
+    window.makeKeyAndOrderFront(nil)
   }
 
   /// Centers the window on whichever screen the mouse is currently over (falling

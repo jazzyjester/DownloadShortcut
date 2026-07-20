@@ -57,22 +57,30 @@ public struct QuickAddView: View {
     // to render with light-on-dark text/controls for consistent contrast.
     .colorScheme(.dark)
     .onAppear {
-      print("[QuickAddView] onAppear, setting isTextFieldFocused = true")
       store.send(.onAppear)
-      isTextFieldFocused = true
+      requestFocus()
     }
     // `.onAppear` can fire before the hosting panel has actually finished becoming
     // key (it's shown via manually-driven AppKit code, not SwiftUI's own window
     // lifecycle), so `@FocusState` set there doesn't reliably "stick". Re-apply it
     // whenever a window genuinely becomes key while this popup is showing.
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-      print("[QuickAddView] didBecomeKeyNotification, setting isTextFieldFocused = true")
-      isTextFieldFocused = true
+      requestFocus()
     }
     .onChange(of: isTextFieldFocused) { _, newValue in
       print("[QuickAddView] isTextFieldFocused changed to \(newValue)")
     }
     .onExitCommand { store.send(.cancelButtonTapped) }
+  }
+
+  /// Setting `@FocusState` synchronously inside `.onAppear` is a known SwiftUI
+  /// timing issue — the view's focus wiring often isn't fully settled into the
+  /// hierarchy at that exact instant, so the assignment silently doesn't stick.
+  /// Deferring it by one run loop turn is the standard workaround.
+  private func requestFocus() {
+    DispatchQueue.main.async {
+      isTextFieldFocused = true
+    }
   }
 }
 

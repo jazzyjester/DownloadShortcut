@@ -40,13 +40,9 @@ extension HotkeyClient: DependencyKey {
           // Carbon's event handler, which always runs on the main thread, so this
           // is a real (if unannounced) MainActor context — `assumeIsolated` calls
           // these synchronously here instead of Swift inserting an actual async hop.
-          print("[HotkeyClient] callback fired. isMainThread=\(Thread.isMainThread)")
           MainActor.assumeIsolated {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
-            print(
-              "[HotkeyClient] after activate: NSApp.isActive=\(NSApp.isActive) policy=\(NSApp.activationPolicy())"
-            )
           }
           continuation.yield()
         }
