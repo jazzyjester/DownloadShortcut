@@ -92,6 +92,51 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     window.orderFrontRegardless()
     window.makeKey()
     window.makeFirstResponder(hostingView)
+    simulateClickToFocus(window)
+  }
+
+  /// Feeds a synthetic click directly into our own window — not a system-level
+  /// `CGEvent` (which would need Accessibility permission, since posting into the
+  /// global HID event stream is gated regardless of which window it targets), just
+  /// an `NSEvent` constructed and handed to `window.sendEvent(_:)` in-process. This
+  /// goes through the exact same hit-testing/first-responder code path a real click
+  /// does, as a last-resort fallback in case that path succeeds where directly
+  /// calling `makeKey`/`makeFirstResponder` above hasn't reliably.
+  private func simulateClickToFocus(_ window: NSWindow) {
+    // Aimed at the text field's likely position: horizontally centered, and near
+    // the top (just below the view's top padding) since the field is the first,
+    // top-aligned element in the popup regardless of how many lines its content
+    // ends up wrapping to.
+    let clickPoint = NSPoint(x: window.frame.width / 2, y: max(window.frame.height - 50, 20))
+    let timestamp = ProcessInfo.processInfo.systemUptime
+
+    guard
+      let mouseDown = NSEvent.mouseEvent(
+        with: .leftMouseDown,
+        location: clickPoint,
+        modifierFlags: [],
+        timestamp: timestamp,
+        windowNumber: window.windowNumber,
+        context: nil,
+        eventNumber: 0,
+        clickCount: 1,
+        pressure: 1
+      ),
+      let mouseUp = NSEvent.mouseEvent(
+        with: .leftMouseUp,
+        location: clickPoint,
+        modifierFlags: [],
+        timestamp: timestamp,
+        windowNumber: window.windowNumber,
+        context: nil,
+        eventNumber: 0,
+        clickCount: 1,
+        pressure: 1
+      )
+    else { return }
+
+    window.sendEvent(mouseDown)
+    window.sendEvent(mouseUp)
   }
 
   /// Centers the window on whichever screen the mouse is currently over (falling
