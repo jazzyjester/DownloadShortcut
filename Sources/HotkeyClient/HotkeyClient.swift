@@ -29,16 +29,19 @@ extension HotkeyClient: DependencyKey {
         // fine in practice because the app registers exactly one long-lived
         // listener for the lifetime of the process.
         KeyboardShortcuts.onKeyUp(for: .quickDownload) {
-          // Activate as early as possible — right in the hotkey callback, before any
+          // As early as possible — right in the hotkey callback, before any
           // AsyncStream/TCA effect hops — since macOS is more willing to grant real
           // key/focus status to an activation request made close to the actual
           // input event than one issued several async hops (and run loop turns)
-          // later, deep inside a reducer's response to it. `KeyboardShortcuts`
-          // dispatches this via Carbon's event handler, which always runs on the
-          // main thread, so this is a real (if unannounced) MainActor context —
-          // `assumeIsolated` calls NSApp.activate synchronously here instead of
-          // Swift inserting an actual async hop to reach it.
+          // later, deep inside a reducer's response to it. `.accessory` apps can
+          // also have activation requests silently ignored regardless of timing, so
+          // switch to `.regular` too (QuickAddPanel switches back to `.accessory`
+          // once the popup is dismissed). `KeyboardShortcuts` dispatches this via
+          // Carbon's event handler, which always runs on the main thread, so this
+          // is a real (if unannounced) MainActor context — `assumeIsolated` calls
+          // these synchronously here instead of Swift inserting an actual async hop.
           MainActor.assumeIsolated {
+            NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
           }
           continuation.yield()

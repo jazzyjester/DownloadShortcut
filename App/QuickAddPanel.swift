@@ -11,9 +11,17 @@ import SwiftUI
 /// This is a *titled* window with its title bar hidden, rather than a `.borderless`
 /// `NSPanel`. Borderless panels default `canBecomeKey` to `false` and, even after
 /// overriding that, proved unreliable about actually taking key/focus status when
-/// shown from a global hotkey (several async hops removed from the original
-/// keypress) rather than a normal in-app click. Titled windows behave normally here
-/// with no special-casing needed.
+/// shown from a global hotkey rather than a normal in-app click. Titled windows
+/// behave normally here with no special-casing needed.
+///
+/// The other half of that fix: `.accessory` (`LSUIElement`) apps can have
+/// `NSApp.activate(ignoringOtherApps:)` silently ignored by macOS when it's called
+/// from a background-triggered context like a global hotkey — regardless of how
+/// correctly/promptly it's called — where a `.regular` app's activation request
+/// would be honored normally. This is a documented pattern used by similar
+/// hotkey-summoned utilities (Alfred, Raycast, LaunchBar, …): switch to `.regular`
+/// for the moment the window is shown (briefly showing a Dock icon), and back to
+/// `.accessory` once it's dismissed.
 @MainActor
 final class QuickAddPanel: NSObject, NSWindowDelegate {
   private let store: StoreOf<AppFeature>
@@ -40,6 +48,8 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
   private func showIfNeeded() {
     guard window == nil else { return }
     guard let childStore = store.scope(state: \.quickAdd, action: \.quickAdd.presented) else { return }
+
+    NSApp.setActivationPolicy(.regular)
 
     let hostingView = NSHostingView(rootView: QuickAddView(store: childStore))
     let fittingSize = hostingView.fittingSize
@@ -103,6 +113,7 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
   private func dismiss() {
     window?.orderOut(nil)
     window = nil
+    NSApp.setActivationPolicy(.accessory)
   }
 
   func windowDidResignKey(_ notification: Notification) {
