@@ -47,11 +47,11 @@ public struct QuickAddFeature: Sendable {
         return .send(.delegate(.cancelled))
 
       case let .clipboardRead(text):
-        // Only seed a URL-shaped clipboard, so we don't clobber it with a stray
-        // sentence someone happened to have copied.
-        if let text, !Self.parseURLs(from: text).isEmpty {
-          state.urlText = text
-        }
+        // Always seed from the clipboard, even if it isn't a full "https://..." URL
+        // yet (e.g. "example.com/file.zip" copied without a scheme) — validation
+        // happens on submit, so the user can see and fix it up here instead of the
+        // box silently staying blank.
+        state.urlText = text ?? ""
         return .none
 
       case .delegate:

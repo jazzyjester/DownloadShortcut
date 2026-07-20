@@ -4,7 +4,7 @@ import ComposableArchitecture
 import QuickAddFeature
 import SwiftUI
 
-/// The borderless popup that appears near the mouse cursor when the global shortcut
+/// The borderless popup that appears centered on screen when the global shortcut
 /// fires. Presence is entirely driven by `AppFeature.State.quickAdd`: this class just
 /// shows/hides an `NSPanel` to match, and turns "clicked away" into a cancel.
 @MainActor
@@ -51,25 +51,25 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     panel.contentView = hostingView
     panel.delegate = self
 
-    positionNearMouse(panel)
+    centerOnScreen(panel)
 
     self.panel = panel
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
   }
 
-  /// Anchors the panel just below-right of the cursor, clamped to stay fully on the
-  /// screen the cursor is currently over.
-  private func positionNearMouse(_ panel: NSPanel) {
+  /// Centers the panel on whichever screen the mouse is currently over (falling back
+  /// to the main screen), so it shows up on the display the user is actually using.
+  private func centerOnScreen(_ panel: NSPanel) {
     let mouseLocation = NSEvent.mouseLocation
-    var origin = NSPoint(x: mouseLocation.x + 12, y: mouseLocation.y - panel.frame.height - 12)
+    guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main
+    else { return }
 
-    if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }) ?? NSScreen.main {
-      let visibleFrame = screen.visibleFrame
-      origin.x = min(max(origin.x, visibleFrame.minX), visibleFrame.maxX - panel.frame.width)
-      origin.y = min(max(origin.y, visibleFrame.minY), visibleFrame.maxY - panel.frame.height)
-    }
-
+    let visibleFrame = screen.visibleFrame
+    let origin = NSPoint(
+      x: visibleFrame.midX - panel.frame.width / 2,
+      y: visibleFrame.midY - panel.frame.height / 2
+    )
     panel.setFrameOrigin(origin)
   }
 

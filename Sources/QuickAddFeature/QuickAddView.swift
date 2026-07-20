@@ -10,24 +10,25 @@ public struct QuickAddView: View {
   }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: 10) {
       TextField("Paste or type a URL…", text: $store.urlText, axis: .vertical)
         .textFieldStyle(.plain)
-        .font(.system(size: 14))
-        .lineLimit(1...4)
+        .font(.system(size: 22))
+        .lineLimit(3...10)
         .focused($isTextFieldFocused)
         .onSubmit { store.send(.submitButtonTapped) }
 
       if let validationError = store.validationError {
         Text(validationError)
-          .font(.caption)
+          .font(.title3)
           .foregroundStyle(.red)
       }
     }
-    .padding(12)
-    .frame(width: 360)
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
+    .padding(24)
+    .frame(width: 640, alignment: .leading)
+    .frame(minHeight: 160, alignment: .top)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator))
     .onAppear {
       store.send(.onAppear)
       isTextFieldFocused = true
