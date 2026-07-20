@@ -38,7 +38,7 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
-    let panel = NSPanel(
+    let panel = KeyablePanel(
       contentRect: hostingView.frame,
       styleMask: [.borderless, .nonactivatingPanel],
       backing: .buffered,
@@ -83,4 +83,11 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     // starting a download.
     store.send(.quickAdd(.presented(.cancelButtonTapped)))
   }
+}
+
+/// `NSWindow.canBecomeKey` defaults to `false` for borderless windows — the panel
+/// would show, but never actually become key, so its text field could never get
+/// keyboard focus (this is why typing into the popup silently did nothing).
+private final class KeyablePanel: NSPanel {
+  override var canBecomeKey: Bool { true }
 }
