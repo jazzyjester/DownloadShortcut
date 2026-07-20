@@ -13,11 +13,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private var statusBarController: StatusBarController?
   private var quickAddPanel: QuickAddPanel?
+  private var settingsWindowController: SettingsWindowController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
 
-    statusBarController = StatusBarController(store: store)
+    let settingsWindowController = SettingsWindowController(store: store)
+    self.settingsWindowController = settingsWindowController
+
+    statusBarController = StatusBarController(store: store) {
+      settingsWindowController.show()
+    }
     quickAddPanel = QuickAddPanel(store: store)
 
     store.send(.onLaunch)

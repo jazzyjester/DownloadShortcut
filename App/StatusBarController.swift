@@ -2,6 +2,9 @@ import AppFeature
 import AppKit
 import ComposableArchitecture
 import HistoryFeature
+// See HotkeyClient.swift for why this needs `@preconcurrency`.
+import HotkeyClient
+@preconcurrency import KeyboardShortcuts
 import SharedModels
 import StatusBarFeature
 import SwiftUI
@@ -11,21 +14,25 @@ import SwiftUI
 @MainActor
 final class StatusBarController: NSObject, NSMenuDelegate {
   private let store: StoreOf<AppFeature>
+  private let onSettingsRequested: () -> Void
   private let statusItem: NSStatusItem
   private let iconHostingView: NSHostingView<StatusBarIconView>
 
-  init(store: StoreOf<AppFeature>) {
+  init(store: StoreOf<AppFeature>, onSettingsRequested: @escaping () -> Void) {
     self.store = store
-    self.statusItem = NSStatusBar.system.statusItem(withLength: 60)
+    self.onSettingsRequested = onSettingsRequested
+    // `.variableLength`: the item's width tracks the hosted SwiftUI content's actual
+    // size (see `resizeToFitContent`) instead of a fixed width that leaves a lot of
+    // blank space around the small idle icon.
+    self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.iconHostingView = NSHostingView(rootView: StatusBarIconView(phase: store.statusBar.phase))
 
     super.init()
 
     if let button = statusItem.button {
-      iconHostingView.frame = button.bounds
-      iconHostingView.autoresizingMask = [.width, .height]
       button.addSubview(iconHostingView)
     }
+    resizeToFitContent()
 
     let menu = NSMenu()
     menu.delegate = self
@@ -41,12 +48,33 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     withObservationTracking {
       iconHostingView.rootView = StatusBarIconView(phase: store.statusBar.phase)
     } onChange: { [weak self] in
-      Task { @MainActor in self?.observeIcon() }
+      Task { @MainActor in
+        self?.resizeToFitContent()
+        self?.observeIcon()
+      }
+    }
+  }
+
+  /// Sizes the status item (and its hosted view) to whatever the current icon
+  /// content actually needs — a small square when idle, wider while the "100% (3)"
+  /// progress text is showing.
+  private func resizeToFitContent() {
+    let fittingSize = iconHostingView.fittingSize
+    let width = max(fittingSize.width, 22)
+    statusItem.length = width
+    if let button = statusItem.button {
+      iconHostingView.frame = NSRect(x: 0, y: 0, width: width, height: button.bounds.height)
     }
   }
 
   func menuWillOpen(_ menu: NSMenu) {
     menu.removeAllItems()
+
+    let shortcutDescription = KeyboardShortcuts.getShortcut(for: .quickDownload)?.description ?? "Not set"
+    let shortcutItem = NSMenuItem(title: "Shortcut: \(shortcutDescription)", action: nil, keyEquivalent: "")
+    shortcutItem.isEnabled = false
+    menu.addItem(shortcutItem)
+    menu.addItem(.separator())
 
     let records = store.history.records
     if records.isEmpty {
@@ -81,9 +109,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
     menu.addItem(.separator())
     menu.addItem(
-      ActionMenuItem(title: "Settings…") {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+      ActionMenuItem(title: "Settings…") { [weak self] in
+        self?.onSettingsRequested()
       }
     )
     menu.addItem(

@@ -134,7 +134,11 @@ let package = Package(
       dependencies: [
         "AppFeature"
       ],
-      path: "App"
+      path: "App",
+      exclude: [
+        "Info.plist",
+        "DownloadShortcut.entitlements",
+      ]
     ),
 
     // MARK: - Tests

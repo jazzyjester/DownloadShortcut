@@ -14,9 +14,11 @@ public struct CompletionFeedbackClient: Sendable {
 extension CompletionFeedbackClient: DependencyKey {
   public static let liveValue = CompletionFeedbackClient(
     requestAuthorization: {
+      guard isRunningInsideAppBundle else { return }
       _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
     },
     notifyDownloadFinished: { fileName in
+      guard isRunningInsideAppBundle else { return }
       let content = UNMutableNotificationContent()
       content.title = "Download Finished"
       content.body = fileName
@@ -27,6 +29,15 @@ extension CompletionFeedbackClient: DependencyKey {
       NSSound(named: "Glass")?.play()
     }
   )
+}
+
+/// `UNUserNotificationCenter.current()` throws an uncaught `NSException` (not a
+/// catchable Swift error) when the process isn't running from a real, code-signed
+/// `.app` bundle — e.g. a plain `swift run` executable, which has no bundle
+/// identifier. Guard against that instead of crashing; a proper Xcode-built `.app`
+/// always has one.
+private var isRunningInsideAppBundle: Bool {
+  Bundle.main.bundleIdentifier != nil
 }
 
 extension DependencyValues {
