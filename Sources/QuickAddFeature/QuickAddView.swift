@@ -16,7 +16,7 @@ public struct QuickAddView: View {
     self.onSizeChange = onSizeChange
   }
 
-  private let cornerRadius: CGFloat = 22
+  private let cornerRadius: CGFloat = 28
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 14) {
