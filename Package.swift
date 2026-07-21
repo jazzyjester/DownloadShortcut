@@ -38,6 +38,7 @@ let package = Package(
     .target(
       name: "HotkeyClient",
       dependencies: [
+        "ClipboardClient",
         .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
         "KeyboardShortcuts",
       ]
@@ -67,8 +68,7 @@ let package = Package(
     .target(
       name: "QuickAddFeature",
       dependencies: [
-        "ClipboardClient",
-        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+        .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
       ]
     ),
     .target(

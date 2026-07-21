@@ -111,7 +111,6 @@ public struct QuickAddView: View {
     )
     .onPreferenceChange(QuickAddSizePreferenceKey.self) { onSizeChange($0) }
     .onAppear {
-      store.send(.onAppear)
       requestFocus()
     }
     // `.onAppear` can fire before the hosting panel has actually finished becoming

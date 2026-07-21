@@ -2,91 +2,47 @@ import ComposableArchitecture
 import Foundation
 import Testing
 
-@testable import ClipboardClient
 @testable import QuickAddFeature
 
 @MainActor
 struct QuickAddFeatureTests {
-  private let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
-
-  @Test func onAppearSeedsFromAURLShapedClipboardAndRecordsWhenItWasPasted() async {
-    let store = TestStore(initialState: QuickAddFeature.State()) {
-      QuickAddFeature()
-    } withDependencies: {
-      $0.clipboardClient.readString = { "https://example.com/file.zip" }
-      $0.date.now = fixedNow
-    }
-
-    await store.send(.onAppear)
-    await store.receive(\.clipboardRead) {
-      $0.urlText = "https://example.com/file.zip"
-      $0.pastedAt = self.fixedNow
-    }
+  @Test func extractURLRecognizesAPlainHTTPSURL() {
+    #expect(
+      QuickAddFeature.extractURL(from: "https://example.com/file.zip")
+        == URL(string: "https://example.com/file.zip")
+    )
   }
 
-  @Test func onAppearFixesUpAClipboardURLWithNoScheme() async {
+  @Test func extractURLFixesUpATextWithNoScheme() {
     // e.g. "example.com/file.zip" copied without "https://" — recognized and fixed
-    // up to a real URL, rather than the box staying blank or unusable as-is.
-    let store = TestStore(initialState: QuickAddFeature.State()) {
-      QuickAddFeature()
-    } withDependencies: {
-      $0.clipboardClient.readString = { "example.com/file.zip" }
-      $0.date.now = fixedNow
-    }
-
-    await store.send(.onAppear)
-    await store.receive(\.clipboardRead) {
-      $0.urlText = "https://example.com/file.zip"
-      $0.pastedAt = self.fixedNow
-    }
-    #expect(store.state.isValid)
+    // up to a real URL, rather than being unusable as-is.
+    #expect(
+      QuickAddFeature.extractURL(from: "example.com/file.zip")
+        == URL(string: "https://example.com/file.zip")
+    )
   }
 
-  @Test func onAppearExtractsAndFixesAProtocolRelativeURLBuriedInJSON() async {
+  @Test func extractURLFixesUpAProtocolRelativeURLBuriedInJSON() {
     // Matches a real "copy from a network inspector" scenario: a JSON fragment with
     // a protocol-relative URL (no scheme) inside a quoted field.
     let json = """
       "src": "//cdn.example.com/media/archive/low/some-video-id/archive_low.mp4",
       """
-    let store = TestStore(initialState: QuickAddFeature.State()) {
-      QuickAddFeature()
-    } withDependencies: {
-      $0.clipboardClient.readString = { json }
-      $0.date.now = fixedNow
-    }
-
-    await store.send(.onAppear)
-    await store.receive(\.clipboardRead) {
-      $0.urlText = "https://cdn.example.com/media/archive/low/some-video-id/archive_low.mp4"
-      $0.pastedAt = self.fixedNow
-    }
-    #expect(store.state.isValid)
+    #expect(
+      QuickAddFeature.extractURL(from: json)
+        == URL(string: "https://cdn.example.com/media/archive/low/some-video-id/archive_low.mp4")
+    )
   }
 
-  @Test func onAppearExtractsAURLEmbeddedInASentence() async {
-    let store = TestStore(initialState: QuickAddFeature.State()) {
-      QuickAddFeature()
-    } withDependencies: {
-      $0.clipboardClient.readString = { "check this out: https://example.com/file.zip it's great" }
-      $0.date.now = fixedNow
-    }
-
-    await store.send(.onAppear)
-    await store.receive(\.clipboardRead) {
-      $0.urlText = "https://example.com/file.zip"
-      $0.pastedAt = self.fixedNow
-    }
+  @Test func extractURLFindsAURLEmbeddedInASentence() {
+    #expect(
+      QuickAddFeature.extractURL(from: "check this out: https://example.com/file.zip it's great")
+        == URL(string: "https://example.com/file.zip")
+    )
   }
 
-  @Test func onAppearLeavesTextBlankWhenClipboardIsEmpty() async {
-    let store = TestStore(initialState: QuickAddFeature.State()) {
-      QuickAddFeature()
-    } withDependencies: {
-      $0.clipboardClient.readString = { nil }
-    }
-
-    await store.send(.onAppear)
-    await store.receive(\.clipboardRead)
+  @Test func extractURLReturnsNilForTextWithNoURL() {
+    #expect(QuickAddFeature.extractURL(from: "not a url") == nil)
   }
 
   @Test func submitWithBlankTextShowsValidationError() async {

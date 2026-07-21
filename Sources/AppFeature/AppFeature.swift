@@ -44,11 +44,10 @@ public struct AppFeature: Sendable {
     case fileRevealRequested(URL)
     case history(HistoryFeature.Action)
     case historyLoaded([DownloadRecord])
-    case hotkeyPressed
+    case hotkeyPressed(seedText: String?)
     case onLaunch
     case quickAdd(PresentationAction<QuickAddFeature.Action>)
     case settings(SettingsFeature.Action)
-    case showQuickAddPopup
     case statusBar(StatusBarFeature.Action)
   }
 
@@ -95,29 +94,25 @@ public struct AppFeature: Sendable {
         state.history.records = records
         return .none
 
-      case .hotkeyPressed:
+      case let .hotkeyPressed(seedText):
         // Ignore repeat presses while the popup is already showing.
         guard state.quickAdd == nil else { return .none }
-        guard state.settings.settings.autoDownloadWhenClipboardHasValidURL else {
-          state.quickAdd = QuickAddFeature.State()
-          return .none
+        // Auto-download mode: skip the popup entirely when the captured text already
+        // has a usable URL, falling back to the popup (pre-filled with whatever was
+        // captured, so the user can fix it up) when it doesn't.
+        if state.settings.settings.autoDownloadWhenClipboardHasValidURL,
+          let seedText, let url = QuickAddFeature.extractURL(from: seedText)
+        {
+          return .send(.downloadQueue(.addURLs([url])))
         }
-        // Auto-download mode: skip the popup entirely when the clipboard already has
-        // a usable URL, falling back to the popup (so the user can fix it up) when
-        // it doesn't.
-        return .run { send in
-          if let text = await clipboardClient.readString(), let url = QuickAddFeature.extractURL(from: text) {
-            await send(.downloadQueue(.addURLs([url])))
-          } else {
-            await send(.showQuickAddPopup)
-          }
-        }
+        state.quickAdd = makeQuickAddState(seedText: seedText)
+        return .none
 
       case .onLaunch:
         return .merge(
           .run { send in
-            for await _ in hotkeyClient.shortcutTriggered() {
-              await send(.hotkeyPressed)
+            for await seedText in hotkeyClient.shortcutTriggered() {
+              await send(.hotkeyPressed(seedText: seedText))
             }
           },
           .run { _ in await completionFeedbackClient.requestAuthorization() },
@@ -126,7 +121,7 @@ public struct AppFeature: Sendable {
               await send(.fileRevealRequested(fileURL))
             }
           },
-          // Needed for `clipboardClient.readString()`'s synthetic ⌘C (captures
+          // Needed for the hotkey-triggered clipboard read's synthetic ⌘C (captures
           // whatever's selected in the frontmost app, even if never explicitly
           // copied) to actually be able to post that keystroke into another app.
           .run { _ in clipboardClient.requestAccessibilityAuthorizationIfNeeded() },
@@ -152,11 +147,6 @@ public struct AppFeature: Sendable {
       case .settings:
         return .none
 
-      case .showQuickAddPopup:
-        guard state.quickAdd == nil else { return .none }
-        state.quickAdd = QuickAddFeature.State()
-        return .none
-
       case .statusBar:
         return .none
       }
@@ -164,6 +154,17 @@ public struct AppFeature: Sendable {
     .ifLet(\.$quickAdd, action: \.quickAdd) {
       QuickAddFeature()
     }
+  }
+
+  /// Seeds the popup from captured text (already resolved by the time the hotkey
+  /// effect fires — see `HotkeyClient`), preferring a URL found (and normalized)
+  /// anywhere inside it — e.g. a JSON blob with a `"src": "//host/path.mp4"` field
+  /// should still find and fix up that URL — falling back to the raw text verbatim so
+  /// the user can see and fix it up themselves.
+  private func makeQuickAddState(seedText: String?) -> QuickAddFeature.State {
+    guard let seedText, !seedText.isEmpty else { return QuickAddFeature.State() }
+    let urlText = QuickAddFeature.extractURL(from: seedText)?.absoluteString ?? seedText
+    return QuickAddFeature.State(urlText: urlText, pastedAt: now)
   }
 
   /// Records a settled (finished or failed) download to history, persists it,

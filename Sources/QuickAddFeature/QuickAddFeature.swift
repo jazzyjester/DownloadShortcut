@@ -1,9 +1,9 @@
-import ClipboardClient
 import ComposableArchitecture
 import Foundation
 
 /// The small popup that appears near the cursor when the global shortcut fires:
-/// pre-filled from the clipboard, submits one or more URLs to be downloaded.
+/// pre-filled from the clipboard (by `AppFeature`, at the moment the shortcut fires —
+/// see `HotkeyClient`), submits one or more URLs to be downloaded.
 @Reducer
 public struct QuickAddFeature: Sendable {
   @ObservableState
@@ -29,9 +29,7 @@ public struct QuickAddFeature: Sendable {
   public enum Action: BindableAction, Sendable {
     case binding(BindingAction<State>)
     case cancelButtonTapped
-    case clipboardRead(String?)
     case delegate(Delegate)
-    case onAppear
     case submitButtonTapped
 
     @CasePathable
@@ -42,9 +40,6 @@ public struct QuickAddFeature: Sendable {
   }
 
   public init() {}
-
-  @Dependency(\.clipboardClient) var clipboardClient
-  @Dependency(\.date.now) var now
 
   public var body: some Reducer<State, Action> {
     BindingReducer()
@@ -57,23 +52,8 @@ public struct QuickAddFeature: Sendable {
       case .cancelButtonTapped:
         return .send(.delegate(.cancelled))
 
-      case let .clipboardRead(text):
-        // Seed from the clipboard, preferring a URL found (and normalized) anywhere
-        // inside it — e.g. copying a JSON blob with a `"src": "//host/path.mp4"`
-        // field should still find and fix up that URL — falling back to the raw
-        // text verbatim so the user can see and fix it up themselves.
-        guard let text, !text.isEmpty else { return .none }
-        state.urlText = Self.extractURL(from: text)?.absoluteString ?? text
-        state.pastedAt = now
-        return .none
-
       case .delegate:
         return .none
-
-      case .onAppear:
-        return .run { send in
-          await send(.clipboardRead(clipboardClient.readString()))
-        }
 
       case .submitButtonTapped:
         let urls = Self.parseURLs(from: state.urlText)

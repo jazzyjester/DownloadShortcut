@@ -3,7 +3,6 @@ import Foundation
 import Testing
 
 @testable import AppFeature
-@testable import ClipboardClient
 @testable import DownloadQueueFeature
 @testable import FileActionsClient
 @testable import QuickAddFeature
@@ -13,13 +12,35 @@ import Testing
 
 @MainActor
 struct AppFeatureTests {
-  @Test func hotkeyPressedPresentsTheQuickAddPopup() async {
+  @Test func hotkeyPressedPresentsTheQuickAddPopupEmptyWhenNothingWasCaptured() async {
     let store = TestStore(initialState: AppFeature.State()) {
       AppFeature()
     }
 
-    await store.send(.hotkeyPressed) {
+    await store.send(.hotkeyPressed(seedText: nil)) {
       $0.quickAdd = QuickAddFeature.State()
+    }
+  }
+
+  @Test func hotkeyPressedSeedsThePopupFromCapturedTextAndFixesUpTheURL() async {
+    // The text has already been captured (including any synthetic-copy attempt) by
+    // the time this action fires — see HotkeyClient — so this just has to seed the
+    // popup with it, same URL-extraction/fixup as before.
+    let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+    let json = """
+      "src": "//cdn.example.com/media/archive/low/some-video-id/archive_low.mp4",
+      """
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      $0.date.now = fixedNow
+    }
+
+    await store.send(.hotkeyPressed(seedText: json)) {
+      $0.quickAdd = QuickAddFeature.State(
+        urlText: "https://cdn.example.com/media/archive/low/some-video-id/archive_low.mp4",
+        pastedAt: fixedNow
+      )
     }
   }
 
@@ -30,7 +51,7 @@ struct AppFeatureTests {
       AppFeature()
     }
 
-    await store.send(.hotkeyPressed)
+    await store.send(.hotkeyPressed(seedText: "https://example.com/other.zip"))
   }
 
   @Test func submittingAURLDownloadsItAndRecordsHistory() async {
@@ -81,7 +102,7 @@ struct AppFeatureTests {
     #expect(store.state.statusBar.phase == .idle)
   }
 
-  @Test func hotkeyPressedSkipsThePopupAndDownloadsWhenAutoDownloadIsOnAndClipboardHasAValidURL() async {
+  @Test func hotkeyPressedSkipsThePopupAndDownloadsWhenAutoDownloadIsOnAndCapturedTextHasAValidURL() async {
     var settings = AppSettings.default
     settings.autoDownloadWhenClipboardHasValidURL = true
     let store = TestStore(
@@ -92,12 +113,11 @@ struct AppFeatureTests {
     ) {
       AppFeature()
     } withDependencies: {
-      $0.clipboardClient.readString = { "https://example.com/file.zip" }
       $0.uuid = .incrementing
     }
     store.exhaustivity = .off
 
-    await store.send(.hotkeyPressed)
+    await store.send(.hotkeyPressed(seedText: "https://example.com/file.zip"))
     await store.finish()
     await store.skipReceivedActions()
 
@@ -106,20 +126,20 @@ struct AppFeatureTests {
     #expect(store.state.downloadQueue.items.first?.sourceURL == URL(string: "https://example.com/file.zip"))
   }
 
-  @Test func hotkeyPressedFallsBackToThePopupWhenAutoDownloadIsOnButClipboardHasNoValidURL() async {
+  @Test func hotkeyPressedFallsBackToThePopupWhenAutoDownloadIsOnButCapturedTextHasNoValidURL() async {
     var settings = AppSettings.default
     settings.autoDownloadWhenClipboardHasValidURL = true
+    let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
     let store = TestStore(
       initialState: AppFeature.State(settings: SettingsFeature.State(settings: settings))
     ) {
       AppFeature()
     } withDependencies: {
-      $0.clipboardClient.readString = { "not a url" }
+      $0.date.now = fixedNow
     }
 
-    await store.send(.hotkeyPressed)
-    await store.receive(\.showQuickAddPopup) {
-      $0.quickAdd = QuickAddFeature.State()
+    await store.send(.hotkeyPressed(seedText: "not a url")) {
+      $0.quickAdd = QuickAddFeature.State(urlText: "not a url", pastedAt: fixedNow)
     }
   }
 
