@@ -107,6 +107,8 @@ let package = Package(
       name: "AppFeature",
       dependencies: [
         "SharedModels",
+        "ClipboardClient",
+        "FileActionsClient",
         "HotkeyClient",
         "HistoryClient",
         "QuickAddFeature",

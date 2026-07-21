@@ -3,8 +3,11 @@ import Foundation
 import Testing
 
 @testable import AppFeature
+@testable import ClipboardClient
 @testable import DownloadQueueFeature
+@testable import FileActionsClient
 @testable import QuickAddFeature
+@testable import SettingsFeature
 @testable import SharedModels
 @testable import StatusBarFeature
 
@@ -60,7 +63,7 @@ struct AppFeatureTests {
         URL(fileURLWithPath: "/tmp/Downloads/\(suggestedFileName)")
       }
       $0.historyClient.save = { _ in }
-      $0.completionFeedbackClient.notifyDownloadFinished = { _ in }
+      $0.completionFeedbackClient.notifyDownloadFinished = { _, _ in }
     }
     store.exhaustivity = .off
 
@@ -76,5 +79,62 @@ struct AppFeatureTests {
     #expect(store.state.history.records.first?.fileName == "report.pdf")
     #expect(store.state.history.records.first?.didFail == false)
     #expect(store.state.statusBar.phase == .idle)
+  }
+
+  @Test func hotkeyPressedSkipsThePopupAndDownloadsWhenAutoDownloadIsOnAndClipboardHasAValidURL() async {
+    var settings = AppSettings.default
+    settings.autoDownloadWhenClipboardHasValidURL = true
+    let store = TestStore(
+      initialState: AppFeature.State(
+        downloadQueue: DownloadQueueFeature.State(maxConcurrentDownloads: 0),
+        settings: SettingsFeature.State(settings: settings)
+      )
+    ) {
+      AppFeature()
+    } withDependencies: {
+      $0.clipboardClient.readString = { "https://example.com/file.zip" }
+      $0.uuid = .incrementing
+    }
+    store.exhaustivity = .off
+
+    await store.send(.hotkeyPressed)
+    await store.finish()
+    await store.skipReceivedActions()
+
+    #expect(store.state.quickAdd == nil)
+    #expect(store.state.downloadQueue.items.count == 1)
+    #expect(store.state.downloadQueue.items.first?.sourceURL == URL(string: "https://example.com/file.zip"))
+  }
+
+  @Test func hotkeyPressedFallsBackToThePopupWhenAutoDownloadIsOnButClipboardHasNoValidURL() async {
+    var settings = AppSettings.default
+    settings.autoDownloadWhenClipboardHasValidURL = true
+    let store = TestStore(
+      initialState: AppFeature.State(settings: SettingsFeature.State(settings: settings))
+    ) {
+      AppFeature()
+    } withDependencies: {
+      $0.clipboardClient.readString = { "not a url" }
+    }
+
+    await store.send(.hotkeyPressed)
+    await store.receive(\.showQuickAddPopup) {
+      $0.quickAdd = QuickAddFeature.State()
+    }
+  }
+
+  @Test func fileRevealRequestedRevealsTheFileInFinder() async {
+    let revealedFileURL = LockIsolated<URL?>(nil)
+    let fileURL = URL(fileURLWithPath: "/tmp/Downloads/report.pdf")
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      $0.fileActionsClient.revealInFinder = { revealedFileURL.setValue($0) }
+    }
+
+    await store.send(.fileRevealRequested(fileURL))
+    await store.finish()
+
+    #expect(revealedFileURL.value == fileURL)
   }
 }

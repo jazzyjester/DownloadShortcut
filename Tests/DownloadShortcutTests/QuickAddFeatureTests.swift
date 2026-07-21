@@ -1,4 +1,5 @@
 import ComposableArchitecture
+import Foundation
 import Testing
 
 @testable import ClipboardClient
@@ -6,16 +7,20 @@ import Testing
 
 @MainActor
 struct QuickAddFeatureTests {
-  @Test func onAppearSeedsFromAURLShapedClipboard() async {
+  private let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+
+  @Test func onAppearSeedsFromAURLShapedClipboardAndRecordsWhenItWasPasted() async {
     let store = TestStore(initialState: QuickAddFeature.State()) {
       QuickAddFeature()
     } withDependencies: {
       $0.clipboardClient.readString = { "https://example.com/file.zip" }
+      $0.date.now = fixedNow
     }
 
     await store.send(.onAppear)
     await store.receive(\.clipboardRead) {
       $0.urlText = "https://example.com/file.zip"
+      $0.pastedAt = self.fixedNow
     }
   }
 
@@ -26,11 +31,13 @@ struct QuickAddFeatureTests {
       QuickAddFeature()
     } withDependencies: {
       $0.clipboardClient.readString = { "example.com/file.zip" }
+      $0.date.now = fixedNow
     }
 
     await store.send(.onAppear)
     await store.receive(\.clipboardRead) {
       $0.urlText = "https://example.com/file.zip"
+      $0.pastedAt = self.fixedNow
     }
     #expect(store.state.isValid)
   }
@@ -45,11 +52,13 @@ struct QuickAddFeatureTests {
       QuickAddFeature()
     } withDependencies: {
       $0.clipboardClient.readString = { json }
+      $0.date.now = fixedNow
     }
 
     await store.send(.onAppear)
     await store.receive(\.clipboardRead) {
       $0.urlText = "https://cdn.example.com/media/archive/low/some-video-id/archive_low.mp4"
+      $0.pastedAt = self.fixedNow
     }
     #expect(store.state.isValid)
   }
@@ -59,11 +68,13 @@ struct QuickAddFeatureTests {
       QuickAddFeature()
     } withDependencies: {
       $0.clipboardClient.readString = { "check this out: https://example.com/file.zip it's great" }
+      $0.date.now = fixedNow
     }
 
     await store.send(.onAppear)
     await store.receive(\.clipboardRead) {
       $0.urlText = "https://example.com/file.zip"
+      $0.pastedAt = self.fixedNow
     }
   }
 

@@ -1,6 +1,7 @@
 import AppFeature
 import AppKit
 import ComposableArchitecture
+import DownloadQueueFeature
 import HistoryFeature
 // See HotkeyClient.swift for why this needs `@preconcurrency`.
 import HotkeyClient
@@ -76,6 +77,8 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     menu.addItem(shortcutItem)
     menu.addItem(.separator())
 
+    addCancelItems(to: menu)
+
     let records = store.history.records
     if records.isEmpty {
       let emptyItem = NSMenuItem(title: "No downloads yet", action: nil, keyEquivalent: "")
@@ -118,6 +121,48 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         NSApp.terminate(nil)
       }
     )
+  }
+
+  /// Active (downloading or still-queued) items can be cancelled. With exactly one,
+  /// a single "Cancel Download" item cancels it directly; with more than one, a
+  /// submenu lists each by name so the user picks which one — rather than an
+  /// ambiguous single action guessing for them.
+  private func addCancelItems(to menu: NSMenu) {
+    let activeItems = store.downloadQueue.items.filter { $0.status.countsTowardConcurrencyLimit }
+    guard !activeItems.isEmpty else { return }
+
+    if activeItems.count == 1, let item = activeItems.first {
+      menu.addItem(
+        ActionMenuItem(title: "Cancel “\(item.sourceURL.lastPathComponent)”") { [weak self] in
+          self?.cancelDownload(id: item.id)
+        }
+      )
+    } else {
+      let cancelItem = NSMenuItem(title: "Cancel Download…", action: nil, keyEquivalent: "")
+      let submenu = NSMenu()
+      for item in activeItems {
+        submenu.addItem(
+          ActionMenuItem(title: item.sourceURL.lastPathComponent) { [weak self] in
+            self?.cancelDownload(id: item.id)
+          }
+        )
+      }
+      submenu.addItem(.separator())
+      submenu.addItem(
+        ActionMenuItem(title: "Cancel All") { [weak self] in
+          for item in activeItems {
+            self?.cancelDownload(id: item.id)
+          }
+        }
+      )
+      cancelItem.submenu = submenu
+      menu.addItem(cancelItem)
+    }
+    menu.addItem(.separator())
+  }
+
+  private func cancelDownload(id: DownloadItem.State.ID) {
+    store.send(.downloadQueue(.items(.element(id: id, action: .cancelButtonTapped))))
   }
 }
 

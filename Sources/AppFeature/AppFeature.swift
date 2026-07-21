@@ -1,5 +1,7 @@
+import ClipboardClient
 import ComposableArchitecture
 import DownloadQueueFeature
+import FileActionsClient
 import Foundation
 import HistoryClient
 import HistoryFeature
@@ -39,19 +41,23 @@ public struct AppFeature: Sendable {
 
   public enum Action: Sendable {
     case downloadQueue(DownloadQueueFeature.Action)
+    case fileRevealRequested(URL)
     case history(HistoryFeature.Action)
     case historyLoaded([DownloadRecord])
     case hotkeyPressed
     case onLaunch
     case quickAdd(PresentationAction<QuickAddFeature.Action>)
     case settings(SettingsFeature.Action)
+    case showQuickAddPopup
     case statusBar(StatusBarFeature.Action)
   }
 
   public init() {}
 
+  @Dependency(\.clipboardClient) var clipboardClient
   @Dependency(\.completionFeedbackClient) var completionFeedbackClient
   @Dependency(\.date.now) var now
+  @Dependency(\.fileActionsClient) var fileActionsClient
   @Dependency(\.historyClient) var historyClient
   @Dependency(\.hotkeyClient) var hotkeyClient
 
@@ -79,6 +85,9 @@ public struct AppFeature: Sendable {
       case .downloadQueue:
         return refreshStatusBarEffect(state, justFinishedFileName: nil)
 
+      case let .fileRevealRequested(fileURL):
+        return .run { _ in fileActionsClient.revealInFinder(fileURL) }
+
       case .history:
         return .none
 
@@ -89,8 +98,20 @@ public struct AppFeature: Sendable {
       case .hotkeyPressed:
         // Ignore repeat presses while the popup is already showing.
         guard state.quickAdd == nil else { return .none }
-        state.quickAdd = QuickAddFeature.State()
-        return .none
+        guard state.settings.settings.autoDownloadWhenClipboardHasValidURL else {
+          state.quickAdd = QuickAddFeature.State()
+          return .none
+        }
+        // Auto-download mode: skip the popup entirely when the clipboard already has
+        // a usable URL, falling back to the popup (so the user can fix it up) when
+        // it doesn't.
+        return .run { send in
+          if let text = clipboardClient.readString(), let url = QuickAddFeature.extractURL(from: text) {
+            await send(.downloadQueue(.addURLs([url])))
+          } else {
+            await send(.showQuickAddPopup)
+          }
+        }
 
       case .onLaunch:
         return .merge(
@@ -100,6 +121,11 @@ public struct AppFeature: Sendable {
             }
           },
           .run { _ in await completionFeedbackClient.requestAuthorization() },
+          .run { send in
+            for await fileURL in completionFeedbackClient.notificationClicked() {
+              await send(.fileRevealRequested(fileURL))
+            }
+          },
           .send(.settings(.onAppear)),
           .run { send in await send(.historyLoaded(historyClient.load())) }
         )
@@ -120,6 +146,11 @@ public struct AppFeature: Sendable {
         return .run { _ in try? historyClient.save([]) }
 
       case .settings:
+        return .none
+
+      case .showQuickAddPopup:
+        guard state.quickAdd == nil else { return .none }
+        state.quickAdd = QuickAddFeature.State()
         return .none
 
       case .statusBar:
@@ -161,7 +192,9 @@ public struct AppFeature: Sendable {
       refreshStatusBarEffect(state, justFinishedFileName: isFailure ? nil : fileName),
     ]
     if !isFailure, state.settings.settings.notifyOnCompletion {
-      effects.append(.run { _ in await completionFeedbackClient.notifyDownloadFinished(fileName) })
+      effects.append(
+        .run { _ in await completionFeedbackClient.notifyDownloadFinished(fileName, savedFileURL) }
+      )
     }
     if !isFailure, state.settings.settings.playSoundOnCompletion {
       effects.append(.run { _ in completionFeedbackClient.playSound() })

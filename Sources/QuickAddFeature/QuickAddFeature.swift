@@ -10,9 +10,13 @@ public struct QuickAddFeature: Sendable {
   public struct State: Equatable, Sendable {
     public var urlText: String
     public var validationError: String?
+    /// When the current `urlText` was seeded from the clipboard, so the view can show
+    /// the user how fresh (or stale) the pasted item is.
+    public var pastedAt: Date?
 
-    public init(urlText: String = "") {
+    public init(urlText: String = "", pastedAt: Date? = nil) {
       self.urlText = urlText
+      self.pastedAt = pastedAt
     }
 
     /// Live validity, recomputed from `urlText` as it changes — lets the view show
@@ -40,6 +44,7 @@ public struct QuickAddFeature: Sendable {
   public init() {}
 
   @Dependency(\.clipboardClient) var clipboardClient
+  @Dependency(\.date.now) var now
 
   public var body: some Reducer<State, Action> {
     BindingReducer()
@@ -59,6 +64,7 @@ public struct QuickAddFeature: Sendable {
         // text verbatim so the user can see and fix it up themselves.
         guard let text, !text.isEmpty else { return .none }
         state.urlText = Self.extractURL(from: text)?.absoluteString ?? text
+        state.pastedAt = now
         return .none
 
       case .delegate:
@@ -82,7 +88,7 @@ public struct QuickAddFeature: Sendable {
 
   /// Splits on newlines so pasting/typing several URLs at once queues them all,
   /// keeping only lines that parse as an absolute URL with a scheme and host.
-  static func parseURLs(from text: String) -> [URL] {
+  public static func parseURLs(from text: String) -> [URL] {
     text
       .split(whereSeparator: \.isNewline)
       .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -100,7 +106,7 @@ public struct QuickAddFeature: Sendable {
   /// all (both common in JSON API responses/network-inspector copies). `NSDataDetector`
   /// recognizes all three, but defaults to `http://` for the latter two; this prefers
   /// `https://` whenever the original text didn't already spell out a scheme.
-  static func extractURL(from text: String) -> URL? {
+  public static func extractURL(from text: String) -> URL? {
     guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
     else { return nil }
 

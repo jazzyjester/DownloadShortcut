@@ -22,6 +22,7 @@ public struct SettingsFeature: Sendable {
   }
 
   public enum Action: Sendable {
+    case autoDownloadToggleChanged(Bool)
     case clearHistoryButtonTapped
     case delegate(Delegate)
     case launchAtLoginToggleChanged(Bool)
@@ -46,6 +47,10 @@ public struct SettingsFeature: Sendable {
   public var body: some Reducer<State, Action> {
     Reduce { state, action in
       switch action {
+      case let .autoDownloadToggleChanged(isOn):
+        state.settings.autoDownloadWhenClipboardHasValidURL = isOn
+        return persist(state.settings)
+
       case .clearHistoryButtonTapped:
         return .send(.delegate(.clearHistoryRequested))
 
