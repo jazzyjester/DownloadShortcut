@@ -4,19 +4,29 @@ import ComposableArchitecture
 import QuickAddFeature
 import SwiftUI
 
+/// A borderless window that can still become key. Borderless `NSWindow`s return
+/// `false` from `canBecomeKey` by default, which blocks keyboard input entirely —
+/// this override is the standard fix, and is unrelated to (and doesn't reintroduce)
+/// the earlier `@FocusState` timing bug fixed in `QuickAddView`.
+private final class KeyableBorderlessWindow: NSWindow {
+  override var canBecomeKey: Bool { true }
+}
+
 /// The popup that appears centered on screen when the global shortcut fires.
 /// Presence is entirely driven by `AppFeature.State.quickAdd`: this class just
 /// shows/hides an `NSWindow` to match, and turns "clicked away" into a cancel.
 ///
-/// This is a *titled* window with its title bar hidden, rather than a `.borderless`
-/// `NSPanel`, and switches `NSApp`'s activation policy to `.regular` for the moment
-/// it's shown (see `showIfNeeded`/`dismiss`) — both changes needed to reliably get
-/// the window into a real key/active state when summoned from a global hotkey.
-/// Diagnostic logging confirmed that part now works correctly (window key, app
-/// active, right window). The remaining piece — SwiftUI's `@FocusState` actually
-/// landing on the text field — is handled in `QuickAddView` itself; this class
-/// deliberately does *not* also call `makeFirstResponder`/synthesize a click, since
-/// those turned out to interfere with SwiftUI's own focus handling rather than help it.
+/// This is a fully `.borderless` window — no titlebar, so there's no native chrome
+/// (traffic lights, titlebar background material, ...) to hide in the first place,
+/// unlike an earlier version of this file that used a `.titled` window with its
+/// titlebar hidden, which kept leaving a sliver of native chrome visible above the
+/// popup no matter how it was configured. `NSApp`'s activation policy still switches
+/// to `.regular` for the moment it's shown (see `showIfNeeded`/`dismiss`) to reliably
+/// get the window into a real key/active state when summoned from a global hotkey.
+/// The other piece needed for that — SwiftUI's `@FocusState` actually landing on the
+/// text field — is handled in `QuickAddView` itself; this class deliberately does
+/// *not* also call `makeFirstResponder`/synthesize a click, since those turned out to
+/// interfere with SwiftUI's own focus handling rather than help it.
 @MainActor
 final class QuickAddPanel: NSObject, NSWindowDelegate {
   private let store: StoreOf<AppFeature>
@@ -51,45 +61,25 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
         self?.resizeWindow(toContentSize: size)
       }
     )
-    // Without this, the hosting view keeps whatever fixed frame we hand it below and
-    // doesn't track the window's actual content area on later resizes, which is what
-    // was leaving a sliver of the native titlebar background visible above the popup.
+    // So the hosting view keeps tracking the window's actual content area (which is
+    // the entire window for a borderless one) across later resizes.
     hostingView.autoresizingMask = [.width, .height]
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
-    let window = NSWindow(
+    let window = KeyableBorderlessWindow(
       contentRect: hostingView.frame,
-      styleMask: [.titled, .fullSizeContentView],
+      styleMask: [.borderless],
       backing: .buffered,
       defer: false
     )
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
-    window.standardWindowButton(.closeButton)?.isHidden = true
-    window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-    window.standardWindowButton(.zoomButton)?.isHidden = true
     window.isMovableByWindowBackground = true
     window.level = .floating
     window.isOpaque = false
     window.backgroundColor = .clear
     window.hasShadow = true
-    // A `.titled` window's own chrome defaults to a light appearance regardless of
-    // our SwiftUI content forcing `.colorScheme(.dark)` — that's a separate,
-    // AppKit-level appearance. Forcing this too means any native titlebar remnant
-    // renders dark and blends in, instead of showing up as a stray light bar.
-    window.appearance = NSAppearance(named: .darkAqua)
     window.contentView = hostingView
     window.delegate = self
-
-    // `NSWindow(contentRect:styleMask:...)`'s `contentRect` is still interpreted as
-    // "the area below the titlebar" even with `.fullSizeContentView` set, so the
-    // initializer adds titlebar height on top of the size we asked for — leaving a
-    // titlebar-height gap at the top where native chrome could show through.
-    // `setContentSize` is titlebar-aware for `.fullSizeContentView` windows and
-    // corrects that, so the window ends up exactly `fittingSize` with no leftover
-    // gap.
-    window.setContentSize(fittingSize)
 
     centerOnScreen(window)
 
@@ -110,9 +100,6 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     guard currentFrame.size != roundedSize else { return }
 
     let center = NSPoint(x: currentFrame.midX, y: currentFrame.midY)
-    // `setContentSize` (see the comment in `showIfNeeded`) rather than `setFrame`
-    // with a manually computed size, so this stays exact as the window's titlebar
-    // (still present, just hidden) keeps being accounted for correctly.
     window.setContentSize(roundedSize)
     window.setFrameOrigin(
       NSPoint(x: center.x - roundedSize.width / 2, y: center.y - roundedSize.height / 2)
