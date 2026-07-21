@@ -16,7 +16,10 @@ public struct QuickAddView: View {
     self.onSizeChange = onSizeChange
   }
 
-  private let cornerRadius: CGFloat = 28
+  /// Also used by `QuickAddPanel` to mask the hosting `NSView`'s own layer to the
+  /// same shape, as a backstop against AppKit/SwiftUI internals painting an opaque
+  /// background outside this view's own `clipShape`.
+  public static let cornerRadius: CGFloat = 28
 
   public var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -82,9 +85,9 @@ public struct QuickAddView: View {
         endPoint: .bottom
       )
     )
-    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+      RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
         // A brighter hairline along the top fading to nothing lower down — the
         // classic "glass rim light" that sells the material as an actual pane of
         // glass rather than a flat dark rounded rectangle.

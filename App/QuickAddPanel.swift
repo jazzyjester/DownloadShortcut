@@ -64,13 +64,19 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     // So the hosting view keeps tracking the window's actual content area (which is
     // the entire window for a borderless one) across later resizes.
     hostingView.autoresizingMask = [.width, .height]
-    // `NSHostingView` paints its own opaque backing by default, which shows through
-    // as a plain rectangle at the corners *outside* the SwiftUI content's rounded
-    // `clipShape` — the window itself being non-opaque with a clear background isn't
-    // enough on its own. Making the hosting view's own layer transparent is what
-    // actually lets the corners read as fully transparent instead of a light-gray box.
+    // `NSHostingView`/SwiftUI paint an opaque backing somewhere in their internal
+    // layer hierarchy by default, which shows through as a light gray fill at the
+    // corners *outside* the SwiftUI content's rounded `clipShape` — the window being
+    // non-opaque with a clear background isn't enough, and neither was clearing just
+    // the hosting view's own top-level layer background (some deeper internal layer
+    // still painted it). Masking the hosting view's layer to the same rounded shape
+    // clips everything within it — regardless of what any internal layer paints — at
+    // the compositing level, which is a hard guarantee rather than another guess at
+    // which specific layer is responsible.
     hostingView.wantsLayer = true
     hostingView.layer?.backgroundColor = .clear
+    hostingView.layer?.cornerRadius = QuickAddView.cornerRadius
+    hostingView.layer?.masksToBounds = true
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
