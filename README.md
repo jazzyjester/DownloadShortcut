@@ -15,6 +15,7 @@ Press a global shortcut anywhere on your Mac, confirm the link, and the file lan
 
 ## Contents
 
+- [Demo](#demo)
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Installation](#installation)
@@ -23,6 +24,23 @@ Press a global shortcut anywhere on your Mac, confirm the link, and the file lan
 - [Architecture](#architecture)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Demo
+
+<p align="center">
+  <img src="docs/images/popup-empty.png" alt="Popup prompting for a URL" width="360"><br>
+  <sub>Press the shortcut, and the popup appears ready for a URL.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/popup-valid-url.png" alt="Popup with a valid URL entered" width="360"><br>
+  <sub>Paste or type a link — it's validated instantly.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/tray-progress.png" alt="Menu bar icon showing download progress" width="120"><br>
+  <sub>The menu bar icon turns into a live progress ring while downloading.</sub>
+</p>
 
 ## Features
 
