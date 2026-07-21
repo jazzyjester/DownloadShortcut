@@ -51,6 +51,10 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
         self?.resizeWindow(toContentSize: size)
       }
     )
+    // Without this, the hosting view keeps whatever fixed frame we hand it below and
+    // doesn't track the window's actual content area on later resizes, which is what
+    // was leaving a sliver of the native titlebar background visible above the popup.
+    hostingView.autoresizingMask = [.width, .height]
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
@@ -70,8 +74,22 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     window.isOpaque = false
     window.backgroundColor = .clear
     window.hasShadow = true
+    // A `.titled` window's own chrome defaults to a light appearance regardless of
+    // our SwiftUI content forcing `.colorScheme(.dark)` — that's a separate,
+    // AppKit-level appearance. Forcing this too means any native titlebar remnant
+    // renders dark and blends in, instead of showing up as a stray light bar.
+    window.appearance = NSAppearance(named: .darkAqua)
     window.contentView = hostingView
     window.delegate = self
+
+    // `NSWindow(contentRect:styleMask:...)`'s `contentRect` is still interpreted as
+    // "the area below the titlebar" even with `.fullSizeContentView` set, so the
+    // initializer adds titlebar height on top of the size we asked for — leaving a
+    // titlebar-height gap at the top where native chrome could show through.
+    // `setContentSize` is titlebar-aware for `.fullSizeContentView` windows and
+    // corrects that, so the window ends up exactly `fittingSize` with no leftover
+    // gap.
+    window.setContentSize(fittingSize)
 
     centerOnScreen(window)
 
@@ -92,13 +110,13 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     guard currentFrame.size != roundedSize else { return }
 
     let center = NSPoint(x: currentFrame.midX, y: currentFrame.midY)
-    let newFrame = NSRect(
-      x: center.x - roundedSize.width / 2,
-      y: center.y - roundedSize.height / 2,
-      width: roundedSize.width,
-      height: roundedSize.height
+    // `setContentSize` (see the comment in `showIfNeeded`) rather than `setFrame`
+    // with a manually computed size, so this stays exact as the window's titlebar
+    // (still present, just hidden) keeps being accounted for correctly.
+    window.setContentSize(roundedSize)
+    window.setFrameOrigin(
+      NSPoint(x: center.x - roundedSize.width / 2, y: center.y - roundedSize.height / 2)
     )
-    window.setFrame(newFrame, display: true)
   }
 
   /// Centers the window on whichever screen the mouse is currently over (falling
