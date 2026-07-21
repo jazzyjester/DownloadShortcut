@@ -19,9 +19,8 @@ extension KeyboardShortcuts.Name {
 /// AppKit/Carbon directly.
 @DependencyClient
 public struct HotkeyClient: Sendable {
-  /// Yields the text to seed the popup with each time the shortcut fires — captured
-  /// via `ClipboardClient.readString()` (which may itself simulate ⌘C to grab a
-  /// selection that was never explicitly copied).
+  /// Yields the clipboard text (if any) to seed the popup with each time the
+  /// shortcut fires.
   public var shortcutTriggered: @Sendable () -> AsyncStream<String?> = { .finished }
 }
 
@@ -33,32 +32,20 @@ extension HotkeyClient: DependencyKey {
         // fine in practice because the app registers exactly one long-lived
         // listener for the lifetime of the process.
         KeyboardShortcuts.onKeyUp(for: .quickDownload) {
-          print(
-            "[HotkeyClient] shortcut fired, frontmost app before capture = "
-              + "\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil")"
-          )
-          Task { @MainActor in
+          // As early as possible — right in the hotkey callback, before any
+          // AsyncStream/TCA effect hops — since macOS is more willing to grant real
+          // key/focus status to an activation request made close to the actual
+          // input event than one issued several async hops (and run loop turns)
+          // later, deep inside a reducer's response to it. `.accessory` apps can
+          // also have activation requests silently ignored regardless of timing, so
+          // switch to `.regular` too (QuickAddPanel switches back to `.accessory`
+          // once the popup is dismissed). `KeyboardShortcuts` dispatches this via
+          // Carbon's event handler, which always runs on the main thread, so this
+          // is a real (if unannounced) MainActor context — `assumeIsolated` calls
+          // these synchronously here instead of Swift inserting an actual async hop.
+          MainActor.assumeIsolated {
             @Dependency(\.clipboardClient) var clipboardClient
-            // Must happen *before* activating this app below: `readString()` may
-            // simulate ⌘C to capture a selection the user never explicitly copied,
-            // and that synthetic keystroke is delivered to whichever app is
-            // frontmost/key at the moment it's posted. Once we activate ourselves,
-            // it would be delivered to us instead of the app the user actually had
-            // something selected in.
-            let seedText = await clipboardClient.readString()
-            print(
-              "[HotkeyClient] capture done, frontmost app now = "
-                + "\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil"), "
-                + "seedText length = \(seedText?.count ?? -1)"
-            )
-
-            // Then activate as soon as possible after that — since macOS is more
-            // willing to grant real key/focus status to an activation request made
-            // close to the actual input event than one issued several async hops
-            // (and run loop turns) later, deep inside a reducer's response to it.
-            // `.accessory` apps can also have activation requests silently ignored
-            // regardless of timing, so switch to `.regular` too (`QuickAddPanel`
-            // switches back to `.accessory` once the popup is dismissed).
+            let seedText = clipboardClient.readString()
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             continuation.yield(seedText)

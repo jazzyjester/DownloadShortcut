@@ -1,4 +1,3 @@
-import ClipboardClient
 import ComposableArchitecture
 import DownloadQueueFeature
 import FileActionsClient
@@ -53,7 +52,6 @@ public struct AppFeature: Sendable {
 
   public init() {}
 
-  @Dependency(\.clipboardClient) var clipboardClient
   @Dependency(\.completionFeedbackClient) var completionFeedbackClient
   @Dependency(\.date.now) var now
   @Dependency(\.fileActionsClient) var fileActionsClient
@@ -121,10 +119,6 @@ public struct AppFeature: Sendable {
               await send(.fileRevealRequested(fileURL))
             }
           },
-          // Needed for the hotkey-triggered clipboard read's synthetic ⌘C (captures
-          // whatever's selected in the frontmost app, even if never explicitly
-          // copied) to actually be able to post that keystroke into another app.
-          .run { _ in clipboardClient.requestAccessibilityAuthorizationIfNeeded() },
           .send(.settings(.onAppear)),
           .run { send in await send(.historyLoaded(historyClient.load())) }
         )
