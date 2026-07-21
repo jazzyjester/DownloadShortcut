@@ -84,7 +84,12 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     window.level = .floating
     window.isOpaque = false
     window.backgroundColor = .clear
-    window.hasShadow = true
+    // The native window shadow is computed from the window's rectangular frame, not
+    // the rounded shape SwiftUI actually draws — that mismatch is what showed up as a
+    // faint rectangular hairline right at the corners. `QuickAddView` already draws
+    // its own shadow that follows the real rounded shape, so the native one is both
+    // redundant and the actual source of the artifact; turn it off.
+    window.hasShadow = false
     window.contentView = hostingView
     window.delegate = self
 
