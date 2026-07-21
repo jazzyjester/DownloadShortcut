@@ -66,15 +66,21 @@ public struct QuickAddView: View {
     .frame(minWidth: 420, idealWidth: 640, maxWidth: 900, alignment: .leading)
     .fixedSize(horizontal: false, vertical: true)
     .background(
-      ZStack {
-        // Real AppKit vibrancy (`.hudWindow`, the same material behind Spotlight's
-        // and Notification Center's panels) rather than a SwiftUI `Material` fill —
-        // it reads as genuinely dark, frosted glass instead of a tinted gray blur.
-        // Needs the hosting NSWindow to be non-opaque with a clear background (set
-        // in QuickAddPanel) for the blur to actually composite with the desktop.
-        VisualEffectBackground(material: .hudWindow, blendingMode: .behindWindow)
-        Color.black.opacity(0.45)
-      }
+      // A solid, opaque dark fill rather than a real vibrancy blur — the earlier
+      // `.behindWindow` material composited with whatever was actually behind the
+      // popup on screen (another window, a browser tab, ...), which read as stray
+      // text/lines showing through rather than a deliberate glass effect. A subtle
+      // top-to-bottom gradient keeps some depth without letting anything bleed
+      // through; the only real transparency left is the four corners outside the
+      // rounded rect, which is the intended "floating rounded window" look.
+      LinearGradient(
+        colors: [
+          Color(red: 0.16, green: 0.16, blue: 0.19),
+          Color(red: 0.09, green: 0.09, blue: 0.11),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+      )
     )
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     .overlay(
@@ -123,27 +129,6 @@ public struct QuickAddView: View {
     DispatchQueue.main.async {
       isTextFieldFocused = true
     }
-  }
-}
-
-/// Bridges `NSVisualEffectView` into SwiftUI so the popup can use the same real,
-/// system-level vibrancy/blur materials AppKit panels like Spotlight use, rather
-/// than SwiftUI's own (visually flatter) `Material` types.
-private struct VisualEffectBackground: NSViewRepresentable {
-  var material: NSVisualEffectView.Material
-  var blendingMode: NSVisualEffectView.BlendingMode
-
-  func makeNSView(context: Context) -> NSVisualEffectView {
-    let view = NSVisualEffectView()
-    view.material = material
-    view.blendingMode = blendingMode
-    view.state = .active
-    return view
-  }
-
-  func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-    nsView.material = material
-    nsView.blendingMode = blendingMode
   }
 }
 
