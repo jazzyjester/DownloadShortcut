@@ -106,7 +106,7 @@ public struct AppFeature: Sendable {
         // a usable URL, falling back to the popup (so the user can fix it up) when
         // it doesn't.
         return .run { send in
-          if let text = clipboardClient.readString(), let url = QuickAddFeature.extractURL(from: text) {
+          if let text = await clipboardClient.readString(), let url = QuickAddFeature.extractURL(from: text) {
             await send(.downloadQueue(.addURLs([url])))
           } else {
             await send(.showQuickAddPopup)
@@ -126,6 +126,10 @@ public struct AppFeature: Sendable {
               await send(.fileRevealRequested(fileURL))
             }
           },
+          // Needed for `clipboardClient.readString()`'s synthetic ⌘C (captures
+          // whatever's selected in the frontmost app, even if never explicitly
+          // copied) to actually be able to post that keystroke into another app.
+          .run { _ in clipboardClient.requestAccessibilityAuthorizationIfNeeded() },
           .send(.settings(.onAppear)),
           .run { send in await send(.historyLoaded(historyClient.load())) }
         )
