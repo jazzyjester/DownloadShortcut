@@ -41,19 +41,34 @@ extension ClipboardClient: DependencyKey {
 /// feature existed.
 private func copySelectionIfPossibleThenReadPasteboard() async -> String? {
   let pasteboard = NSPasteboard.general
+  let isTrusted = AXIsProcessTrusted()
+  print("[ClipboardClient] AXIsProcessTrusted() = \(isTrusted)")
 
-  if AXIsProcessTrusted() {
+  if isTrusted {
     let changeCountBeforeCopy = pasteboard.changeCount
+    print("[ClipboardClient] posting synthetic \u{2318}C, changeCount before = \(changeCountBeforeCopy)")
     postCommandCKeystroke()
     // Apps vary in how long they take to respond to the synthetic ⌘C and write to
     // the pasteboard; poll briefly rather than guessing a single fixed delay.
-    for _ in 0..<15 {
-      if pasteboard.changeCount != changeCountBeforeCopy { break }
+    var didChange = false
+    var pollCount = 0
+    for i in 0..<15 {
+      pollCount = i + 1
+      if pasteboard.changeCount != changeCountBeforeCopy {
+        didChange = true
+        break
+      }
       try? await Task.sleep(for: .milliseconds(20))
     }
+    print(
+      "[ClipboardClient] pasteboard changeCount changed = \(didChange) after \(pollCount) poll(s)"
+        + " (now \(pasteboard.changeCount))"
+    )
   }
 
-  return pasteboard.string(forType: .string)
+  let result = pasteboard.string(forType: .string)
+  print("[ClipboardClient] returning string of length \(result?.count ?? -1)")
+  return result
 }
 
 private func postCommandCKeystroke() {

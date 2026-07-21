@@ -33,6 +33,10 @@ extension HotkeyClient: DependencyKey {
         // fine in practice because the app registers exactly one long-lived
         // listener for the lifetime of the process.
         KeyboardShortcuts.onKeyUp(for: .quickDownload) {
+          print(
+            "[HotkeyClient] shortcut fired, frontmost app before capture = "
+              + "\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil")"
+          )
           Task { @MainActor in
             @Dependency(\.clipboardClient) var clipboardClient
             // Must happen *before* activating this app below: `readString()` may
@@ -42,6 +46,11 @@ extension HotkeyClient: DependencyKey {
             // it would be delivered to us instead of the app the user actually had
             // something selected in.
             let seedText = await clipboardClient.readString()
+            print(
+              "[HotkeyClient] capture done, frontmost app now = "
+                + "\(NSWorkspace.shared.frontmostApplication?.localizedName ?? "nil"), "
+                + "seedText length = \(seedText?.count ?? -1)"
+            )
 
             // Then activate as soon as possible after that — since macOS is more
             // willing to grant real key/focus status to an activation request made
