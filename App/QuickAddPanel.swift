@@ -46,7 +46,11 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
 
     NSApp.setActivationPolicy(.regular)
 
-    let hostingView = NSHostingView(rootView: QuickAddView(store: childStore))
+    let hostingView = NSHostingView(
+      rootView: QuickAddView(store: childStore) { [weak self] size in
+        self?.resizeWindow(toContentSize: size)
+      }
+    )
     let fittingSize = hostingView.fittingSize
     hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
@@ -74,6 +78,27 @@ final class QuickAddPanel: NSObject, NSWindowDelegate {
     self.window = window
     NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
+  }
+
+  /// Resizes the window to match the SwiftUI content's actual rendered size (reported
+  /// live via `QuickAddView`'s `onSizeChange`), keeping it anchored around its current
+  /// center point so it grows/shrinks in place instead of drifting as the text changes.
+  private func resizeWindow(toContentSize contentSize: CGSize) {
+    guard let window else { return }
+    let roundedSize = NSSize(width: contentSize.width.rounded(), height: contentSize.height.rounded())
+    guard roundedSize.width > 0, roundedSize.height > 0 else { return }
+
+    let currentFrame = window.frame
+    guard currentFrame.size != roundedSize else { return }
+
+    let center = NSPoint(x: currentFrame.midX, y: currentFrame.midY)
+    let newFrame = NSRect(
+      x: center.x - roundedSize.width / 2,
+      y: center.y - roundedSize.height / 2,
+      width: roundedSize.width,
+      height: roundedSize.height
+    )
+    window.setFrame(newFrame, display: true)
   }
 
   /// Centers the window on whichever screen the mouse is currently over (falling
